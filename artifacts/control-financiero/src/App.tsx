@@ -1,5 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, BarChart3, Check, ChevronRight, CircleDollarSign, Edit3, HeartPulse, LayoutDashboard, Menu, Plus, RotateCcw, Settings2, Target, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, BarChart3, Check, ChevronRight, CircleDollarSign, Download, Edit3, FileSpreadsheet, HeartPulse, LayoutDashboard, Menu, PieChart as PieChartIcon, Plus, RotateCcw, Settings2, Target, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Link, Route, Switch, useLocation } from 'wouter';
 
 type MovementType = 'income' | 'expense';
@@ -77,6 +79,53 @@ function formatDate(value: string) { return dateFormat.format(new Date(`${value}
 function today() { return new Date().toISOString().slice(0, 10); }
 function monthLabel() { return monthFormat.format(new Date()).replace(/^./, (letter) => letter.toUpperCase()); }
 
+function exportToExcel(data: FinanceData, currencyCode: CurrencyCode) {
+  const income = data.movements.filter((item) => item.type === 'income').reduce((sum, item) => sum + item.amount, 0);
+  const expenses = data.movements.filter((item) => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0);
+  const budgetTotal = data.budgets.reduce((sum, item) => sum + item.amount, 0);
+  const spentByCategory = data.movements.filter((item) => item.type === 'expense').reduce<Record<string, number>>((acc, item) => ({ ...acc, [item.category]: (acc[item.category] || 0) + item.amount }), {});
+
+  const summary = [
+    { Indicador: 'Moneda', Valor: currencyCode },
+    { Indicador: 'Ingresos', Valor: income },
+    { Indicador: 'Gastos', Valor: expenses },
+    { Indicador: 'Saldo disponible', Valor: income - expenses },
+    { Indicador: 'Presupuesto planificado', Valor: budgetTotal },
+    { Indicador: 'Margen frente al presupuesto', Valor: budgetTotal - expenses },
+  ];
+  const movements = data.movements.map((item) => ({
+    Fecha: item.date,
+    Tipo: item.type === 'income' ? 'Ingreso' : 'Egreso',
+    Descripción: item.description,
+    Categoría: item.category,
+    Importe: item.amount,
+    Moneda: currencyCode,
+  }));
+  const budgets = data.budgets.map((item) => {
+    const spent = spentByCategory[item.category] || 0;
+    return {
+      Categoría: item.category,
+      Presupuesto: item.amount,
+      Gastado: spent,
+      Margen: item.amount - spent,
+      Estado: spent > item.amount ? 'Excedido' : 'Dentro del presupuesto',
+      Moneda: currencyCode,
+    };
+  });
+  const categories = Object.entries(spentByCategory).map(([category, amount]) => ({
+    Categoría: category,
+    Gastado: amount,
+    Moneda: currencyCode,
+  }));
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summary), 'Resumen');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(movements), 'Movimientos');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(budgets), 'Presupuestos');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(categories), 'Gastos por categoría');
+  XLSX.writeFile(workbook, `control-financiero-${today()}.xlsx`);
+}
+
 function App() {
   const [data, setData] = useState<FinanceData>(loadData);
   const [currencyCode, setCurrencyCode] = useState<CurrencyCode>(loadCurrency);
@@ -132,13 +181,14 @@ function App() {
                <Route path="/" component={() => <DashboardPage data={data} currencyCode={currencyCode} onNew={() => setMovementEditor('new')} />} />
                <Route path="/movimientos" component={() => <MovementsPage data={data} currencyCode={currencyCode} onNew={() => setMovementEditor('new')} onEdit={setMovementEditor} onDelete={removeMovement} />} />
                <Route path="/presupuesto" component={() => <BudgetPage data={data} currencyCode={currencyCode} onNew={() => setBudgetEditor('new')} onEdit={setBudgetEditor} onDelete={removeBudget} />} />
+               <Route path="/analisis" component={() => <AnalysisPage data={data} currencyCode={currencyCode} onExport={() => exportToExcel(data, currencyCode)} />} />
               <Route component={NotFound} />
             </Switch>
           </main>
         </div>
       </div>
       <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-[#ded7c8] bg-[#f5f1e8]/95 px-3 py-2 backdrop-blur-md md:hidden"><Navigation mobile /></div>
-       {movementEditor && <MovementModal value={movementEditor === 'new' ? null : movementEditor} currencyCode={currencyCode} onClose={() => setMovementEditor(null)} onSave={(movement) => { updateData({ ...data, movements: movementEditor === 'new' ? [movement, ...data.movements] : data.movements.map((item) => item.id === movement.id ? movement : item) }); setMovementEditor(null); }} />}
+     {movementEditor && <MovementModal value={movementEditor === 'new' ? null : movementEditor} currencyCode={currencyCode} onClose={() => setMovementEditor(null)} onSave={(movement) => { updateData({ ...data, movements: movementEditor === 'new' ? [movement, ...data.movements] : data.movements.map((item) => item.id === movement.id ? movement : item) }); setMovementEditor(null); }} />}
        {budgetEditor && <BudgetModal value={budgetEditor === 'new' ? null : budgetEditor} currencyCode={currencyCode} existing={data.budgets} onClose={() => setBudgetEditor(null)} onSave={(budget) => { updateData({ ...data, budgets: budgetEditor === 'new' ? [...data.budgets, budget] : data.budgets.map((item) => item.id === budget.id ? budget : item) }); setBudgetEditor(null); }} />}
     </div>
   );
@@ -163,6 +213,7 @@ function Navigation({ mobile = false, onNavigate }: { mobile?: boolean; onNaviga
     { href: '/', label: 'Resumen', icon: LayoutDashboard },
     { href: '/movimientos', label: 'Movimientos', icon: BarChart3 },
     { href: '/presupuesto', label: 'Presupuesto', icon: Target },
+    { href: '/analisis', label: 'Análisis', icon: PieChartIcon },
   ];
   return <nav className={mobile ? 'mx-auto flex max-w-md items-center justify-around' : 'space-y-2'}>{links.map(({ href, label, icon: Icon }) => {
     const active = location === href;
@@ -235,8 +286,58 @@ function BudgetPage({ data, currencyCode, onNew, onEdit, onDelete }: { data: Fin
   </div>;
 }
 
-function EmptyState({ title, description, action, actionLabel }: { title: string; description: string; action: () => void; actionLabel: string }) {
-  return <div className="dot-grid rounded-2xl border border-dashed border-[#cfc7b6] px-6 py-12 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#d5e5d6] text-[#0b6e69]"><TrendingUp size={22} /></div><h3 className="serif mt-4 text-2xl text-[#183f3e]">{title}</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[#7b8279]">{description}</p><button type="button" onClick={action} data-testid="button-empty-action" className="mt-5 rounded-xl bg-[#0b6e69] px-4 py-2.5 text-sm font-bold text-[#f8f1e5]">{actionLabel}</button></div>;
+function AnalysisPage({ data, currencyCode, onExport }: { data: FinanceData; currencyCode: CurrencyCode; onExport: () => void }) {
+  const expensesByCategory = useMemo(() => data.movements
+    .filter((item) => item.type === 'expense')
+    .reduce<Record<string, number>>((acc, item) => ({ ...acc, [item.category]: (acc[item.category] || 0) + item.amount }), {}), [data.movements]);
+  const pieData = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value, fill: categoryColors[name] || categoryColors.Otros }));
+  const budgetData = data.budgets.map((item) => {
+    const spent = expensesByCategory[item.category] || 0;
+    return { category: item.category, presupuesto: item.amount, gastado: spent, margen: item.amount - spent };
+  });
+  const totalExpenses = pieData.reduce((sum, item) => sum + item.value, 0);
+  const totalBudget = budgetData.reduce((sum, item) => sum + item.presupuesto, 0);
+  const totalMargin = totalBudget - totalExpenses;
+  const topCategory = pieData.length ? [...pieData].sort((a, b) => b.value - a.value)[0] : null;
+
+  return <div>
+    <PageTitle
+      eyebrow="Lectura del mes"
+      title="Análisis"
+      description="Entiende en qué se va tu dinero y cuánto margen te queda frente a lo que planeaste."
+      action={<button type="button" onClick={onExport} data-testid="button-export-excel" className="flex items-center justify-center gap-2 rounded-xl bg-[#0b6e69] px-5 py-3 text-sm font-bold text-[#f8f1e5] shadow-sm transition-transform hover:-translate-y-0.5"><Download size={17} /> Exportar a Excel</button>}
+    />
+
+    <div className="mb-5 grid gap-4 sm:grid-cols-3">
+      <div className="rounded-[22px] border border-[#e2dbcd] bg-[#fbf8f1] p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#7b8279]">Total gastado</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(totalExpenses, currencyCode)}</p><p className="mt-1 text-xs text-[#8a9188]">{pieData.length} categorías con egresos</p></div>
+      <div className="rounded-[22px] border border-[#e2dbcd] bg-[#fbf8f1] p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#7b8279]">Presupuesto</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(totalBudget, currencyCode)}</p><p className="mt-1 text-xs text-[#8a9188]">Suma de tus categorías</p></div>
+      <div className={`rounded-[22px] p-5 ${totalMargin >= 0 ? 'bg-[#d5e5d6]' : 'bg-[#f7d8ce]'}`}><p className="text-xs font-bold uppercase tracking-[.12em] text-[#527468]">Margen disponible</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(totalMargin, currencyCode)}</p><p className="mt-1 text-xs text-[#69756e]">{totalMargin >= 0 ? 'Aún puedes decidir' : 'Has superado el plan'}</p></div>
+    </div>
+
+    <div className="grid gap-5 lg:grid-cols-2">
+      <section className="rounded-[26px] border border-[#e2dbcd] bg-[#fbf8f1] p-6 md:p-7" data-testid="chart-expenses-by-category">
+        <div className="mb-2"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#7b8279]">Distribución</p><h2 className="serif mt-1 text-2xl text-[#183f3e]">¿En qué se van tus gastos?</h2></div>
+        {pieData.length ? <div className="h-[310px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pieData} dataKey="value" nameKey="name" innerRadius={72} outerRadius={104} paddingAngle={3} stroke="none">{pieData.map((item) => <Cell key={item.name} fill={item.fill} />)}</Pie><Tooltip formatter={(value) => formatMoney(Number(value), currencyCode)} contentStyle={{ borderRadius: 12, border: '1px solid #e2dbcd', background: '#fbf8f1', fontSize: 12 }} /><Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: '#52635c' }} /></PieChart></ResponsiveContainer></div> : <EmptyState title="Aún no hay gastos" description="Registra un egreso para ver cómo se distribuye tu dinero." actionHref="/movimientos" actionLabel="Añade un movimiento desde la pestaña Movimientos" />}
+      </section>
+
+      <section className="rounded-[26px] border border-[#e2dbcd] bg-[#fbf8f1] p-6 md:p-7" data-testid="chart-budget-comparison">
+        <div className="mb-2"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#7b8279]">Comparación</p><h2 className="serif mt-1 text-2xl text-[#183f3e]">Plan frente a realidad</h2></div>
+        {budgetData.length ? <div className="h-[310px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={budgetData} margin={{ top: 12, right: 8, left: 8, bottom: 4 }}><CartesianGrid stroke="#e9e2d6" vertical={false} /><XAxis dataKey="category" tick={{ fontSize: 11, fill: '#69756e' }} tickLine={false} axisLine={false} /><YAxis tickFormatter={(value) => formatMoney(Number(value), currencyCode)} tick={{ fontSize: 10, fill: '#8a9188' }} tickLine={false} axisLine={false} width={76} /><Tooltip formatter={(value) => formatMoney(Number(value), currencyCode)} contentStyle={{ borderRadius: 12, border: '1px solid #e2dbcd', background: '#fbf8f1', fontSize: 12 }} /><Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: '#52635c' }} /><Bar dataKey="presupuesto" name="Presupuesto" fill="#e9bd63" radius={[5, 5, 0, 0]} /><Bar dataKey="gastado" name="Gastado" fill="#2c8b83" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div> : <EmptyState title="Tu plan empieza aquí" description="Crea un presupuesto por categoría para comparar lo que planeas con lo que gastas." actionHref="/presupuesto" actionLabel="Añade un presupuesto desde la pestaña Presupuesto" />}
+      </section>
+    </div>
+
+    <section className="mt-5 rounded-[26px] border border-[#e2dbcd] bg-[#fbf8f1] p-6 md:p-7" data-testid="section-budget-margins">
+      <div className="mb-5 flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#7b8279]">Detalle por categoría</p><h2 className="serif mt-1 text-2xl text-[#183f3e]">Tus márgenes</h2></div>{topCategory && <p className="hidden text-right text-xs text-[#7b8279] sm:block">Mayor gasto: <span className="font-bold text-[#183f3e]">{topCategory.name}</span></p>}</div>
+      {budgetData.length ? <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead><tr className="border-b border-[#e9e2d6] text-xs uppercase tracking-[.1em] text-[#8a9188]"><th className="pb-3 font-bold">Categoría</th><th className="pb-3 font-bold">Presupuesto</th><th className="pb-3 font-bold">Gastado</th><th className="pb-3 font-bold">Margen</th><th className="pb-3 text-right font-bold">Estado</th></tr></thead><tbody className="divide-y divide-[#eee7d9]">{budgetData.map((item) => <tr key={item.category}><td className="py-4 font-bold text-[#294846]">{item.category}</td><td className="py-4 text-[#69756e]">{formatMoney(item.presupuesto, currencyCode)}</td><td className="py-4 text-[#69756e]">{formatMoney(item.gastado, currencyCode)}</td><td className={`py-4 font-bold ${item.margen >= 0 ? 'text-[#39715f]' : 'text-[#bd5f4a]'}`}>{formatMoney(item.margen, currencyCode)}</td><td className="py-4 text-right"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${item.margen >= 0 ? 'bg-[#d5e5d6] text-[#39715f]' : 'bg-[#f7d8ce] text-[#a75041]'}`}>{item.margen >= 0 ? 'Dentro del plan' : 'Excedido'}</span></td></tr>)}</tbody></table></div> : <EmptyState title="Sin categorías presupuestadas" description="Crea al menos una categoría para ver sus márgenes." action={() => undefined} actionLabel="Ve a Presupuesto para empezar" />}
+    </section>
+
+    <div className="mt-5 flex items-center gap-3 rounded-2xl border border-[#e2dbcd] bg-[#f3d889]/35 p-4 text-sm text-[#536658]"><FileSpreadsheet className="shrink-0 text-[#0b6e69]" size={19} /><p>El archivo Excel incluirá las hojas de resumen, movimientos, presupuestos y gastos por categoría.</p></div>
+  </div>;
+}
+
+function EmptyState({ title, description, action, actionLabel, actionHref }: { title: string; description: string; action?: () => void; actionLabel: string; actionHref?: string }) {
+  const actionContent = actionHref ? <Link href={actionHref} data-testid="link-empty-action" className="mt-5 inline-flex rounded-xl bg-[#0b6e69] px-4 py-2.5 text-sm font-bold text-[#f8f1e5]">{actionLabel}</Link> : <button type="button" onClick={action} data-testid="button-empty-action" className="mt-5 rounded-xl bg-[#0b6e69] px-4 py-2.5 text-sm font-bold text-[#f8f1e5]">{actionLabel}</button>;
+  return <div className="dot-grid rounded-2xl border border-dashed border-[#cfc7b6] px-6 py-12 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#d5e5d6] text-[#0b6e69]"><TrendingUp size={22} /></div><h3 className="serif mt-4 text-2xl text-[#183f3e]">{title}</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[#7b8279]">{description}</p>{actionContent}</div>;
 }
 
 function ModalShell({ title, description, onClose, children }: { title: string; description: string; onClose: () => void; children: ReactNode }) {
