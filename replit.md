@@ -1,6 +1,6 @@
-# [Project name]
+# Control financiero
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Aplicación web responsive para registrar ingresos y egresos, controlar presupuestos por categoría y consultar un resumen financiero mensual.
 
 ## Run & Operate
 
@@ -22,15 +22,22 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/control-financiero/src/App.tsx` — navegación, estado financiero, formularios y persistencia local.
+- `artifacts/control-financiero/src/index.css` — tema visual, responsive layout y estados interactivos.
+- `artifacts/control-financiero` — aplicación web principal.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- La primera versión es frontend-only y persiste los datos en `localStorage` para poder usarla sin configuración de cuenta o servidor.
+- La app inicia con datos de ejemplo para que el resumen sea útil desde el primer acceso y permite restablecerlos.
+- Las tres áreas principales se mantienen como rutas separadas: resumen, movimientos y presupuesto.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Resumen mensual con ingresos, gastos, disponible, salud financiera y avance del presupuesto.
+- Registro, edición, eliminación y filtrado de ingresos y egresos.
+- Creación, edición y eliminación de presupuestos por categoría con alertas visuales de progreso y exceso.
+- Experiencia responsive con navegación lateral en escritorio y navegación inferior en móvil.
 
 ## User preferences
 

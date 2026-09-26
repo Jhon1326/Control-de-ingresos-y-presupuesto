@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --font-sans: var(--app-font-sans);
+  --font-serif: var(--app-font-serif);
+  --font-mono: var(--app-font-mono);
+  --radius-lg: var(--radius);
+}
+
+:root {
+  --background: 42 46% 94%;
+  --foreground: 184 24% 18%;
+  --border: 38 22% 83%;
+  --input: 38 22% 80%;
+  --ring: 174 72% 31%;
+  --card: 42 50% 97%;
+  --card-foreground: 184 24% 18%;
+  --card-border: 38 25% 87%;
+  --popover: 42 50% 97%;
+  --popover-foreground: 184 24% 18%;
+  --popover-border: 38 25% 87%;
+  --primary: 174 72% 31%;
+  --primary-foreground: 42 50% 97%;
+  --secondary: 36 83% 68%;
+  --secondary-foreground: 184 24% 18%;
+  --muted: 39 27% 89%;
+  --muted-foreground: 184 10% 45%;
+  --accent: 9 80% 63%;
+  --accent-foreground: 42 50% 97%;
+  --destructive: 5 66% 47%;
+  --destructive-foreground: 42 50% 97%;
+  --sidebar: 174 72% 31%;
+  --sidebar-foreground: 42 50% 97%;
+  --sidebar-border: 174 66% 26%;
+  --sidebar-primary: 36 83% 68%;
+  --sidebar-primary-foreground: 184 24% 18%;
+  --sidebar-accent: 174 55% 38%;
+  --sidebar-accent-foreground: 42 50% 97%;
+  --app-font-sans: 'DM Sans', sans-serif;
+  --app-font-serif: 'Fraunces', Georgia, serif;
+  --app-font-mono: 'DM Sans', sans-serif;
+  --radius: 1.15rem;
+  --shadow-soft: 0 18px 45px rgba(25, 76, 72, .08);
+  --shadow-lift: 0 12px 25px rgba(25, 76, 72, .12);
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: 184 24% 13%;
+  --foreground: 42 46% 94%;
+  --border: 184 18% 27%;
+  --input: 184 18% 30%;
+  --card: 184 22% 17%;
+  --card-foreground: 42 46% 94%;
+  --card-border: 184 18% 26%;
+  --popover: 184 22% 17%;
+  --popover-foreground: 42 46% 94%;
+  --popover-border: 184 18% 26%;
+  --muted: 184 18% 24%;
+  --muted-foreground: 42 18% 72%;
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply font-sans antialiased bg-background text-foreground; margin: 0; }
+  button, input, select { font: inherit; }
+  button { cursor: pointer; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes soft-pop {
+  from { opacity: 0; transform: scale(.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.app-shell { min-height: 100dvh; background: hsl(var(--background)); }
+.sidebar { background: hsl(var(--sidebar)); color: hsl(var(--sidebar-foreground)); }
+.page-enter { animation: rise-in .45s ease-out both; }
+.soft-pop { animation: soft-pop .35s ease-out both; }
+.card-shadow { box-shadow: var(--shadow-soft); }
+.lift-on-hover { transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease; }
+.lift-on-hover:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); }
+.nav-link { transition: background-color .2s ease, color .2s ease, transform .2s ease; }
+.nav-link:hover { transform: translateX(3px); }
+.serif { font-family: var(--app-font-serif); }
+.dot-grid {
+  background-image: radial-gradient(rgba(11, 110, 105, .15) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.progress-track { background: hsl(var(--muted)); height: 9px; border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: inherit; transition: width .45s ease; }
+@media (max-width: 767px) {
+  .mobile-safe { padding-bottom: 84px; }
+}

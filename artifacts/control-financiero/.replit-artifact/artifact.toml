@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Control financiero"
+description = "Aplicación web responsive para registrar ingresos y egresos, controlar presupuestos por categoría y consultar un resumen financiero mensual."
+version = "1.0.0"
+id = "artifacts/control-financiero"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20798
+
+[services.development]
+run = "pnpm --filter @workspace/control-financiero run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/control-financiero", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/control-financiero/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20798"
+BASE_PATH = "/"
