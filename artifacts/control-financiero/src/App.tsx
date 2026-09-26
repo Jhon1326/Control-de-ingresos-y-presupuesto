@@ -6,9 +6,19 @@ type MovementType = 'income' | 'expense';
 type Movement = { id: string; type: MovementType; description: string; category: string; amount: number; date: string };
 type Budget = { id: string; category: string; amount: number };
 type FinanceData = { movements: Movement[]; budgets: Budget[] };
+type CurrencyCode = 'COP' | 'USD' | 'EUR' | 'MXN' | 'PEN' | 'GBP';
 
 const STORAGE_KEY = 'control-financiero-data-v1';
+const CURRENCY_STORAGE_KEY = 'control-financiero-currency-v1';
 const categories = ['Vivienda', 'Alimentación', 'Transporte', 'Bienestar', 'Ocio', 'Ahorro', 'Otros'];
+const currencyOptions: { code: CurrencyCode; label: string; symbol: string }[] = [
+  { code: 'COP', label: 'Peso colombiano', symbol: '$' },
+  { code: 'USD', label: 'Dólar estadounidense', symbol: 'US$' },
+  { code: 'EUR', label: 'Euro', symbol: '€' },
+  { code: 'MXN', label: 'Peso mexicano', symbol: 'MX$' },
+  { code: 'PEN', label: 'Sol peruano', symbol: 'S/' },
+  { code: 'GBP', label: 'Libra esterlina', symbol: '£' },
+];
 const categoryColors: Record<string, string> = {
   Vivienda: '#ef927d', Alimentación: '#e6b95f', Transporte: '#75a8a0',
   Bienestar: '#bb91a8', Ocio: '#d5824f', Ahorro: '#2c8b83', Otros: '#a39c88',
@@ -35,7 +45,6 @@ const demoData: FinanceData = {
   ],
 };
 
-const currency = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 const dateFormat = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
 const monthFormat = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' });
 
@@ -47,18 +56,36 @@ function loadData(): FinanceData {
   return demoData;
 }
 
-function formatMoney(value: number) { return currency.format(value); }
+function loadCurrency(): CurrencyCode {
+  try {
+    const stored = localStorage.getItem(CURRENCY_STORAGE_KEY);
+    if (currencyOptions.some((item) => item.code === stored)) return stored as CurrencyCode;
+  } catch { /* use the default currency when storage is unavailable */ }
+  return 'COP';
+}
+
+function formatMoney(value: number, currencyCode: CurrencyCode) {
+  const noDecimals = currencyCode === 'COP';
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: currencyCode,
+    minimumFractionDigits: noDecimals ? 0 : 2,
+    maximumFractionDigits: noDecimals ? 0 : 2,
+  }).format(value);
+}
 function formatDate(value: string) { return dateFormat.format(new Date(`${value}T12:00:00`)); }
 function today() { return new Date().toISOString().slice(0, 10); }
 function monthLabel() { return monthFormat.format(new Date()).replace(/^./, (letter) => letter.toUpperCase()); }
 
 function App() {
   const [data, setData] = useState<FinanceData>(loadData);
+  const [currencyCode, setCurrencyCode] = useState<CurrencyCode>(loadCurrency);
   const [menuOpen, setMenuOpen] = useState(false);
   const [movementEditor, setMovementEditor] = useState<Movement | 'new' | null>(null);
   const [budgetEditor, setBudgetEditor] = useState<Budget | 'new' | null>(null);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }, [data]);
+  useEffect(() => { localStorage.setItem(CURRENCY_STORAGE_KEY, currencyCode); }, [currencyCode]);
 
   const updateData = (next: FinanceData) => setData(next);
   const removeMovement = (id: string) => updateData({ ...data, movements: data.movements.filter((item) => item.id !== id) });
@@ -94,6 +121,7 @@ function App() {
               <p className="serif mt-0.5 text-[17px] text-[#183f3e]">Un vistazo amable a tu dinero</p>
             </div>
             <div className="ml-auto flex items-center gap-3">
+              <CurrencyPicker value={currencyCode} onChange={setCurrencyCode} />
               <div className="hidden text-right sm:block"><p className="text-sm font-bold text-[#183f3e]">Hola, Clara</p><p className="text-xs text-[#7b8279]">Tu bolsillo, en calma</p></div>
               <div className="grid h-10 w-10 place-items-center rounded-full bg-[#e9bd63] font-serif text-lg font-bold text-[#174b49]">C</div>
             </div>
@@ -101,23 +129,32 @@ function App() {
           {menuOpen && <div className="fixed inset-0 z-30 bg-[#153f3d]/25 md:hidden" onClick={() => setMenuOpen(false)}><div className="sidebar h-full w-[270px] p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}><Brand /><div className="mt-10"><Navigation onNavigate={() => setMenuOpen(false)} /></div><button type="button" onClick={resetData} data-testid="button-reset-data-mobile" className="mt-10 flex items-center gap-2 text-xs font-semibold text-white/60"><RotateCcw size={14} /> Restablecer ejemplo</button></div></div>}
           <main className="mobile-safe page-enter mx-auto max-w-[1440px] px-5 py-7 md:px-10 md:py-10">
             <Switch>
-              <Route path="/" component={() => <DashboardPage data={data} onNew={() => setMovementEditor('new')} />} />
-              <Route path="/movimientos" component={() => <MovementsPage data={data} onNew={() => setMovementEditor('new')} onEdit={setMovementEditor} onDelete={removeMovement} />} />
-              <Route path="/presupuesto" component={() => <BudgetPage data={data} onNew={() => setBudgetEditor('new')} onEdit={setBudgetEditor} onDelete={removeBudget} />} />
+               <Route path="/" component={() => <DashboardPage data={data} currencyCode={currencyCode} onNew={() => setMovementEditor('new')} />} />
+               <Route path="/movimientos" component={() => <MovementsPage data={data} currencyCode={currencyCode} onNew={() => setMovementEditor('new')} onEdit={setMovementEditor} onDelete={removeMovement} />} />
+               <Route path="/presupuesto" component={() => <BudgetPage data={data} currencyCode={currencyCode} onNew={() => setBudgetEditor('new')} onEdit={setBudgetEditor} onDelete={removeBudget} />} />
               <Route component={NotFound} />
             </Switch>
           </main>
         </div>
       </div>
       <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-[#ded7c8] bg-[#f5f1e8]/95 px-3 py-2 backdrop-blur-md md:hidden"><Navigation mobile /></div>
-      {movementEditor && <MovementModal value={movementEditor === 'new' ? null : movementEditor} onClose={() => setMovementEditor(null)} onSave={(movement) => { updateData({ ...data, movements: movementEditor === 'new' ? [movement, ...data.movements] : data.movements.map((item) => item.id === movement.id ? movement : item) }); setMovementEditor(null); }} />}
-      {budgetEditor && <BudgetModal value={budgetEditor === 'new' ? null : budgetEditor} existing={data.budgets} onClose={() => setBudgetEditor(null)} onSave={(budget) => { updateData({ ...data, budgets: budgetEditor === 'new' ? [...data.budgets, budget] : data.budgets.map((item) => item.id === budget.id ? budget : item) }); setBudgetEditor(null); }} />}
+       {movementEditor && <MovementModal value={movementEditor === 'new' ? null : movementEditor} currencyCode={currencyCode} onClose={() => setMovementEditor(null)} onSave={(movement) => { updateData({ ...data, movements: movementEditor === 'new' ? [movement, ...data.movements] : data.movements.map((item) => item.id === movement.id ? movement : item) }); setMovementEditor(null); }} />}
+       {budgetEditor && <BudgetModal value={budgetEditor === 'new' ? null : budgetEditor} currencyCode={currencyCode} existing={data.budgets} onClose={() => setBudgetEditor(null)} onSave={(budget) => { updateData({ ...data, budgets: budgetEditor === 'new' ? [...data.budgets, budget] : data.budgets.map((item) => item.id === budget.id ? budget : item) }); setBudgetEditor(null); }} />}
     </div>
   );
 }
 
 function Brand() {
   return <Link href="/" className="flex items-center gap-3" data-testid="link-brand"><div className="grid h-10 w-10 place-items-center rounded-[13px] bg-[#f3d889] text-[#0b6e69]"><Wallet size={22} strokeWidth={2.5} /></div><div><p className="serif text-xl font-semibold leading-none tracking-tight">Claro</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[.22em] text-white/55">finanzas</p></div></Link>;
+}
+
+function CurrencyPicker({ value, onChange }: { value: CurrencyCode; onChange: (value: CurrencyCode) => void }) {
+  return <label className="flex items-center gap-2 rounded-xl border border-[#ded7c8] bg-[#fbf8f1] px-2.5 py-1.5 text-xs font-bold text-[#183f3e]" title="Moneda de la aplicación">
+    <span className="hidden text-[#7b8279] sm:inline">Moneda</span>
+    <select aria-label="Seleccionar moneda" value={value} onChange={(event) => onChange(event.target.value as CurrencyCode)} data-testid="select-currency" className="cursor-pointer bg-transparent pr-1 text-xs font-bold text-[#0b6e69] outline-none">
+      {currencyOptions.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.label}</option>)}
+    </select>
+  </label>;
 }
 
 function Navigation({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) {
@@ -142,7 +179,7 @@ function SummaryCard({ label, value, note, type }: { label: string; value: strin
   return <div className={`lift-on-hover card-shadow rounded-[22px] border p-5 ${type === 'balance' ? 'border-[#0b6e69] bg-[#0b6e69] text-[#f8f1e5]' : 'border-[#e2dbcd] bg-[#fbf8f1]'}`} data-testid={`card-summary-${type}`}><div className="flex items-start justify-between"><span className={`text-xs font-bold uppercase tracking-[.12em] ${type === 'balance' ? 'text-white/65' : 'text-[#7b8279]'}`}>{label}</span><span className={`grid h-8 w-8 place-items-center rounded-full ${type === 'income' ? 'bg-[#d5e5d6] text-[#39715f]' : type === 'expense' ? 'bg-[#f7d8ce] text-[#bd5f4a]' : 'bg-[#f3d889] text-[#0b6e69]'}`}>{type === 'income' ? <ArrowDownLeft size={16} /> : type === 'expense' ? <ArrowUpRight size={16} /> : <CircleDollarSign size={16} />}</span></div><p className={`mt-5 font-serif text-3xl tracking-tight ${type === 'balance' ? 'text-[#f8f1e5]' : 'text-[#183f3e]'}`}>{value}</p><p className={`mt-1 text-xs ${type === 'balance' ? 'text-white/65' : positive ? 'text-[#578073]' : 'text-[#a66b5d]'}`}>{note}</p></div>;
 }
 
-function DashboardPage({ data, onNew }: { data: FinanceData; onNew: () => void }) {
+function DashboardPage({ data, currencyCode, onNew }: { data: FinanceData; currencyCode: CurrencyCode; onNew: () => void }) {
   const income = data.movements.filter((item) => item.type === 'income').reduce((sum, item) => sum + item.amount, 0);
   const expenses = data.movements.filter((item) => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0);
   const balance = income - expenses;
@@ -152,7 +189,7 @@ function DashboardPage({ data, onNew }: { data: FinanceData; onNew: () => void }
   const recent = [...data.movements].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   return <div>
     <PageTitle eyebrow="Resumen mensual" title="Tu dinero, más claro." description="Una pausa breve para saber dónde estás y decidir el siguiente paso con tranquilidad." action={<button type="button" onClick={onNew} data-testid="button-add-movement-dashboard" className="flex items-center justify-center gap-2 rounded-xl bg-[#0b6e69] px-5 py-3 text-sm font-bold text-[#f8f1e5] shadow-sm transition-transform hover:-translate-y-0.5"><Plus size={17} /> Añadir movimiento</button>} />
-    <div className="grid gap-4 sm:grid-cols-3"><SummaryCard label="Ingresos" value={formatMoney(income)} note="Lo que ha entrado este mes" type="income" /><SummaryCard label="Gastos" value={formatMoney(expenses)} note="Lo que ha salido este mes" type="expense" /><SummaryCard label="Disponible" value={formatMoney(balance)} note={balance >= 0 ? 'Vas en una buena dirección' : 'Conviene revisar el ritmo'} type="balance" /></div>
+     <div className="grid gap-4 sm:grid-cols-3"><SummaryCard label="Ingresos" value={formatMoney(income, currencyCode)} note="Lo que ha entrado este mes" type="income" /><SummaryCard label="Gastos" value={formatMoney(expenses, currencyCode)} note="Lo que ha salido este mes" type="expense" /><SummaryCard label="Disponible" value={formatMoney(balance, currencyCode)} note={balance >= 0 ? 'Vas en una buena dirección' : 'Conviene revisar el ritmo'} type="balance" /></div>
     <div className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
       <section className="card-shadow rounded-[26px] border border-[#e2dbcd] bg-[#fbf8f1] p-6 md:p-7" data-testid="section-financial-health">
         <div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#7b8279]">Salud financiera</p><h2 className="serif mt-2 text-2xl text-[#183f3e]">Este mes se siente {health >= 35 ? 'estable' : 'en movimiento'}</h2></div><div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#d5e5d6] text-[#39715f]"><HeartPulse size={22} /></div></div>
@@ -160,41 +197,41 @@ function DashboardPage({ data, onNew }: { data: FinanceData; onNew: () => void }
         <div className="mt-8 border-t border-[#e6dfd2] pt-5"><div className="flex justify-between text-xs text-[#7b8279]"><span>Gasto frente a presupuesto</span><span className="font-bold text-[#183f3e]">{budgetTotal ? Math.round((expenses / budgetTotal) * 100) : 0}%</span></div><div className="progress-track mt-3"><div className="progress-fill bg-[#e9bd63]" style={{ width: `${Math.min(100, budgetTotal ? (expenses / budgetTotal) * 100 : 0)}%` }} /></div></div>
       </section>
       <section className="dot-grid overflow-hidden rounded-[26px] border border-[#e9d8a9] bg-[#f3d889] p-6 md:p-7" data-testid="section-budget-glance">
-        <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#5f674e]">Presupuesto</p><Target size={20} className="text-[#0b6e69]" /></div><h2 className="serif mt-3 max-w-xs text-3xl leading-tight text-[#183f3e]">Gastar con intención se nota.</h2><p className="mt-3 text-sm leading-relaxed text-[#536658]">Has usado {formatMoney(expenses)} de {formatMoney(budgetTotal)} planificados.</p>
+         <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#5f674e]">Presupuesto</p><Target size={20} className="text-[#0b6e69]" /></div><h2 className="serif mt-3 max-w-xs text-3xl leading-tight text-[#183f3e]">Gastar con intención se nota.</h2><p className="mt-3 text-sm leading-relaxed text-[#536658]">Has usado {formatMoney(expenses, currencyCode)} de {formatMoney(budgetTotal, currencyCode)} planificados.</p>
         <Link href="/presupuesto" data-testid="link-see-budget" className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-[#0b6e69]">Ver detalle <ChevronRight size={16} /></Link>
       </section>
     </div>
     <section className="mt-5 rounded-[26px] border border-[#e2dbcd] bg-[#fbf8f1] p-6 md:p-7" data-testid="section-recent-movements">
       <div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#7b8279]">Actividad reciente</p><h2 className="serif mt-1 text-2xl text-[#183f3e]">Tus últimos movimientos</h2></div><Link href="/movimientos" data-testid="link-see-movements" className="text-sm font-bold text-[#0b6e69]">Ver todos</Link></div>
-      {recent.length ? <div className="divide-y divide-[#e9e2d6]">{recent.map((item) => <MovementRow key={item.id} movement={item} compact />)}</div> : <EmptyState title="Todavía no hay movimientos" description="Añade tu primer ingreso o gasto para empezar a verlo todo más claro." action={onNew} actionLabel="Añadir movimiento" />}
+       {recent.length ? <div className="divide-y divide-[#e9e2d6]">{recent.map((item) => <MovementRow key={item.id} movement={item} currencyCode={currencyCode} compact />)}</div> : <EmptyState title="Todavía no hay movimientos" description="Añade tu primer ingreso o gasto para empezar a verlo todo más claro." action={onNew} actionLabel="Añadir movimiento" />}
     </section>
   </div>;
 }
 
-function MovementRow({ movement, compact = false, onEdit, onDelete }: { movement: Movement; compact?: boolean; onEdit?: () => void; onDelete?: () => void }) {
+function MovementRow({ movement, currencyCode, compact = false, onEdit, onDelete }: { movement: Movement; currencyCode: CurrencyCode; compact?: boolean; onEdit?: () => void; onDelete?: () => void }) {
   const income = movement.type === 'income';
-  return <div className={`group flex items-center gap-3 py-3 ${compact ? '' : 'px-1'}`} data-testid={`row-movement-${movement.id}`}><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] ${income ? 'bg-[#d5e5d6] text-[#39715f]' : 'bg-[#f7d8ce] text-[#bd5f4a]'}`}>{income ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-[#294846]">{movement.description}</p><p className="mt-0.5 text-xs text-[#8a9188]">{movement.category} · {formatDate(movement.date)}</p></div><p className={`shrink-0 text-sm font-bold ${income ? 'text-[#39715f]' : 'text-[#bd5f4a]'}`}>{income ? '+' : '−'}{formatMoney(movement.amount)}</p>{onEdit && <div className="flex gap-1 pl-2 md:invisible md:group-hover:visible"><button type="button" onClick={onEdit} aria-label="Editar movimiento" data-testid={`button-edit-movement-${movement.id}`} className="rounded-lg p-2 text-[#7b8279] hover:bg-[#eee7d9] hover:text-[#0b6e69]"><Edit3 size={15} /></button><button type="button" onClick={onDelete} aria-label="Eliminar movimiento" data-testid={`button-delete-movement-${movement.id}`} className="rounded-lg p-2 text-[#7b8279] hover:bg-[#f7d8ce] hover:text-[#bd5f4a]"><Trash2 size={15} /></button></div>}</div>;
+  return <div className={`group flex items-center gap-3 py-3 ${compact ? '' : 'px-1'}`} data-testid={`row-movement-${movement.id}`}><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] ${income ? 'bg-[#d5e5d6] text-[#39715f]' : 'bg-[#f7d8ce] text-[#bd5f4a]'}`}>{income ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-[#294846]">{movement.description}</p><p className="mt-0.5 text-xs text-[#8a9188]">{movement.category} · {formatDate(movement.date)}</p></div><p className={`shrink-0 text-sm font-bold ${income ? 'text-[#39715f]' : 'text-[#bd5f4a]'}`}>{income ? '+' : '−'}{formatMoney(movement.amount, currencyCode)}</p>{onEdit && <div className="flex gap-1 pl-2 md:invisible md:group-hover:visible"><button type="button" onClick={onEdit} aria-label="Editar movimiento" data-testid={`button-edit-movement-${movement.id}`} className="rounded-lg p-2 text-[#7b8279] hover:bg-[#eee7d9] hover:text-[#0b6e69]"><Edit3 size={15} /></button><button type="button" onClick={onDelete} aria-label="Eliminar movimiento" data-testid={`button-delete-movement-${movement.id}`} className="rounded-lg p-2 text-[#7b8279] hover:bg-[#f7d8ce] hover:text-[#bd5f4a]"><Trash2 size={15} /></button></div>}</div>;
 }
 
-function MovementsPage({ data, onNew, onEdit, onDelete }: { data: FinanceData; onNew: () => void; onEdit: (movement: Movement) => void; onDelete: (id: string) => void }) {
+function MovementsPage({ data, currencyCode, onNew, onEdit, onDelete }: { data: FinanceData; currencyCode: CurrencyCode; onNew: () => void; onEdit: (movement: Movement) => void; onDelete: (id: string) => void }) {
   const [filter, setFilter] = useState<'all' | MovementType>('all');
   const sorted = [...data.movements].filter((item) => filter === 'all' || item.type === filter).sort((a, b) => b.date.localeCompare(a.date));
   const askDelete = (id: string) => { if (window.confirm('¿Eliminar este movimiento?')) onDelete(id); };
   return <div><PageTitle eyebrow="Tu actividad" title="Movimientos" description="Registra lo que entra y sale. Verlo escrito hace que tus decisiones pesen menos." action={<button type="button" onClick={onNew} data-testid="button-add-movement" className="flex items-center justify-center gap-2 rounded-xl bg-[#0b6e69] px-5 py-3 text-sm font-bold text-[#f8f1e5]"><Plus size={17} /> Nuevo movimiento</button>} />
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div className="flex rounded-xl border border-[#ded7c8] bg-[#fbf8f1] p-1">{(['all', 'income', 'expense'] as const).map((key) => <button type="button" key={key} onClick={() => setFilter(key)} data-testid={`button-filter-${key}`} className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${filter === key ? 'bg-[#0b6e69] text-[#f8f1e5]' : 'text-[#7b8279] hover:text-[#183f3e]'}`}>{key === 'all' ? 'Todos' : key === 'income' ? 'Ingresos' : 'Gastos'}</button>)}</div><p className="text-xs text-[#8a9188]">{sorted.length} {sorted.length === 1 ? 'movimiento' : 'movimientos'}</p></div>
-    <section className="rounded-[26px] border border-[#e2dbcd] bg-[#fbf8f1] p-5 md:p-7">{sorted.length ? <div className="divide-y divide-[#e9e2d6]">{sorted.map((item) => <MovementRow key={item.id} movement={item} onEdit={() => onEdit(item)} onDelete={() => askDelete(item.id)} />)}</div> : <EmptyState title="Nada por aquí todavía" description="Cuando apuntes un ingreso o un gasto, aparecerá en este espacio." action={onNew} actionLabel="Añadir movimiento" />}</section>
-    <div className="mt-5 grid gap-4 sm:grid-cols-2"><div className="rounded-[22px] bg-[#d5e5d6] p-5"><p className="text-xs font-bold uppercase tracking-[.14em] text-[#527468]">Ingresos registrados</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(data.movements.filter((item) => item.type === 'income').reduce((sum, item) => sum + item.amount, 0))}</p></div><div className="rounded-[22px] bg-[#f7d8ce] p-5"><p className="text-xs font-bold uppercase tracking-[.14em] text-[#9c6558]">Gastos registrados</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(data.movements.filter((item) => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0))}</p></div></div>
+     <section className="rounded-[26px] border border-[#e2dbcd] bg-[#fbf8f1] p-5 md:p-7">{sorted.length ? <div className="divide-y divide-[#e9e2d6]">{sorted.map((item) => <MovementRow key={item.id} movement={item} currencyCode={currencyCode} onEdit={() => onEdit(item)} onDelete={() => askDelete(item.id)} />)}</div> : <EmptyState title="Nada por aquí todavía" description="Cuando apuntes un ingreso o un gasto, aparecerá en este espacio." action={onNew} actionLabel="Añadir movimiento" />}</section>
+     <div className="mt-5 grid gap-4 sm:grid-cols-2"><div className="rounded-[22px] bg-[#d5e5d6] p-5"><p className="text-xs font-bold uppercase tracking-[.14em] text-[#527468]">Ingresos registrados</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(data.movements.filter((item) => item.type === 'income').reduce((sum, item) => sum + item.amount, 0), currencyCode)}</p></div><div className="rounded-[22px] bg-[#f7d8ce] p-5"><p className="text-xs font-bold uppercase tracking-[.14em] text-[#9c6558]">Gastos registrados</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(data.movements.filter((item) => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0), currencyCode)}</p></div></div>
   </div>;
 }
 
-function BudgetPage({ data, onNew, onEdit, onDelete }: { data: FinanceData; onNew: () => void; onEdit: (budget: Budget) => void; onDelete: (id: string) => void }) {
+function BudgetPage({ data, currencyCode, onNew, onEdit, onDelete }: { data: FinanceData; currencyCode: CurrencyCode; onNew: () => void; onEdit: (budget: Budget) => void; onDelete: (id: string) => void }) {
   const spent = useMemo(() => data.movements.filter((item) => item.type === 'expense').reduce<Record<string, number>>((acc, item) => ({ ...acc, [item.category]: (acc[item.category] || 0) + item.amount }), {}), [data.movements]);
   const totalBudget = data.budgets.reduce((sum, item) => sum + item.amount, 0);
   const totalSpent = Object.values(spent).reduce((sum, value) => sum + value, 0);
   const askDelete = (id: string) => { if (window.confirm('¿Eliminar este presupuesto?')) onDelete(id); };
-  return <div><PageTitle eyebrow="Plan del mes" title="Presupuesto" description="Ponle un destino a cada euro y deja que el progreso te acompañe, no que te persiga." action={<button type="button" onClick={onNew} data-testid="button-add-budget" className="flex items-center justify-center gap-2 rounded-xl bg-[#0b6e69] px-5 py-3 text-sm font-bold text-[#f8f1e5]"><Plus size={17} /> Añadir categoría</button>} />
-    <div className="mb-6 grid gap-4 sm:grid-cols-3"><div className="rounded-[22px] border border-[#e2dbcd] bg-[#fbf8f1] p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#7b8279]">Planificado</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(totalBudget)}</p></div><div className="rounded-[22px] border border-[#e2dbcd] bg-[#fbf8f1] p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#7b8279]">Gastado</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(totalSpent)}</p></div><div className="rounded-[22px] bg-[#f3d889] p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#5f674e]">Queda por decidir</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(Math.max(0, totalBudget - totalSpent))}</p></div></div>
-    <section className="grid gap-4 md:grid-cols-2">{data.budgets.length ? data.budgets.map((item) => { const amount = spent[item.category] || 0; const percent = Math.round((amount / item.amount) * 100); const over = percent > 100; return <article key={item.id} className="lift-on-hover rounded-[24px] border border-[#e2dbcd] bg-[#fbf8f1] p-5" data-testid={`card-budget-${item.id}`}><div className="flex items-start justify-between"><div className="flex items-center gap-3"><div className="h-3 w-3 rounded-full" style={{ backgroundColor: categoryColors[item.category] || categoryColors.Otros }} /><div><h2 className="font-bold text-[#294846]">{item.category}</h2><p className="mt-0.5 text-xs text-[#8a9188]">{formatMoney(amount)} de {formatMoney(item.amount)}</p></div></div><div className="flex gap-1"><button type="button" onClick={() => onEdit(item)} aria-label="Editar presupuesto" data-testid={`button-edit-budget-${item.id}`} className="rounded-lg p-2 text-[#7b8279] hover:bg-[#eee7d9] hover:text-[#0b6e69]"><Edit3 size={15} /></button><button type="button" onClick={() => askDelete(item.id)} aria-label="Eliminar presupuesto" data-testid={`button-delete-budget-${item.id}`} className="rounded-lg p-2 text-[#7b8279] hover:bg-[#f7d8ce] hover:text-[#bd5f4a]"><Trash2 size={15} /></button></div></div><div className="mt-5 flex items-center justify-between text-xs"><span className={over ? 'font-bold text-[#bd5f4a]' : 'font-semibold text-[#527468]'}>{over ? 'Te has pasado' : percent === 0 ? 'Aún sin gastos' : `${percent}% utilizado`}</span><span className="text-[#8a9188]">{formatMoney(Math.max(0, item.amount - amount))} disponible</span></div><div className="progress-track mt-2"><div className={`progress-fill ${over ? 'bg-[#bd5f4a]' : 'bg-[#2c8b83]'}`} style={{ width: `${Math.min(100, percent)}%` }} /></div></article>; }) : <div className="md:col-span-2"><EmptyState title="Tu presupuesto empieza aquí" description="Crea categorías para darle una intención concreta a tus gastos del mes." action={onNew} actionLabel="Crear presupuesto" /></div>}</section>
+   return <div><PageTitle eyebrow="Plan del mes" title="Presupuesto" description="Ponle un destino a cada cantidad y deja que el progreso te acompañe, no que te persiga." action={<button type="button" onClick={onNew} data-testid="button-add-budget" className="flex items-center justify-center gap-2 rounded-xl bg-[#0b6e69] px-5 py-3 text-sm font-bold text-[#f8f1e5]"><Plus size={17} /> Añadir categoría</button>} />
+     <div className="mb-6 grid gap-4 sm:grid-cols-3"><div className="rounded-[22px] border border-[#e2dbcd] bg-[#fbf8f1] p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#7b8279]">Planificado</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(totalBudget, currencyCode)}</p></div><div className="rounded-[22px] border border-[#e2dbcd] bg-[#fbf8f1] p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#7b8279]">Gastado</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(totalSpent, currencyCode)}</p></div><div className="rounded-[22px] bg-[#f3d889] p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#5f674e]">Queda por decidir</p><p className="serif mt-2 text-2xl text-[#183f3e]">{formatMoney(Math.max(0, totalBudget - totalSpent), currencyCode)}</p></div></div>
+     <section className="grid gap-4 md:grid-cols-2">{data.budgets.length ? data.budgets.map((item) => { const amount = spent[item.category] || 0; const percent = Math.round((amount / item.amount) * 100); const over = percent > 100; return <article key={item.id} className="lift-on-hover rounded-[24px] border border-[#e2dbcd] bg-[#fbf8f1] p-5" data-testid={`card-budget-${item.id}`}><div className="flex items-start justify-between"><div className="flex items-center gap-3"><div className="h-3 w-3 rounded-full" style={{ backgroundColor: categoryColors[item.category] || categoryColors.Otros }} /><div><h2 className="font-bold text-[#294846]">{item.category}</h2><p className="mt-0.5 text-xs text-[#8a9188]">{formatMoney(amount, currencyCode)} de {formatMoney(item.amount, currencyCode)}</p></div></div><div className="flex gap-1"><button type="button" onClick={() => onEdit(item)} aria-label="Editar presupuesto" data-testid={`button-edit-budget-${item.id}`} className="rounded-lg p-2 text-[#7b8279] hover:bg-[#eee7d9] hover:text-[#0b6e69]"><Edit3 size={15} /></button><button type="button" onClick={() => askDelete(item.id)} aria-label="Eliminar presupuesto" data-testid={`button-delete-budget-${item.id}`} className="rounded-lg p-2 text-[#7b8279] hover:bg-[#f7d8ce] hover:text-[#bd5f4a]"><Trash2 size={15} /></button></div></div><div className="mt-5 flex items-center justify-between text-xs"><span className={over ? 'font-bold text-[#bd5f4a]' : 'font-semibold text-[#527468]'}>{over ? 'Te has pasado' : percent === 0 ? 'Aún sin gastos' : `${percent}% utilizado`}</span><span className="text-[#8a9188]">{formatMoney(Math.max(0, item.amount - amount), currencyCode)} disponible</span></div><div className="progress-track mt-2"><div className={`progress-fill ${over ? 'bg-[#bd5f4a]' : 'bg-[#2c8b83]'}`} style={{ width: `${Math.min(100, percent)}%` }} /></div></article>; }) : <div className="md:col-span-2"><EmptyState title="Tu presupuesto empieza aquí" description="Crea categorías para darle una intención concreta a tus gastos del mes." action={onNew} actionLabel="Crear presupuesto" /></div>}</section>
   </div>;
 }
 
@@ -211,7 +248,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 }
 const inputClass = 'w-full rounded-xl border border-[#d9d1c1] bg-[#f8f4eb] px-3.5 py-3 text-sm text-[#183f3e] outline-none transition focus:border-[#0b6e69] focus:ring-2 focus:ring-[#0b6e69]/10';
 
-function MovementModal({ value, onClose, onSave }: { value: Movement | null; onClose: () => void; onSave: (movement: Movement) => void }) {
+function MovementModal({ value, currencyCode, onClose, onSave }: { value: Movement | null; currencyCode: CurrencyCode; onClose: () => void; onSave: (movement: Movement) => void }) {
   const [type, setType] = useState<MovementType>(value?.type || 'expense');
   const [description, setDescription] = useState(value?.description || '');
   const [category, setCategory] = useState(value?.category || 'Alimentación');
@@ -219,16 +256,18 @@ function MovementModal({ value, onClose, onSave }: { value: Movement | null; onC
   const [date, setDate] = useState(value?.date || today());
   const [error, setError] = useState('');
   const submit = (event: FormEvent) => { event.preventDefault(); const numeric = Number(amount.replace(',', '.')); if (!description.trim() || !category || !date || !Number.isFinite(numeric) || numeric <= 0) { setError('Completa todos los campos con un importe mayor que 0.'); return; } onSave({ id: value?.id || `m-${Date.now()}`, type, description: description.trim(), category, amount: numeric, date }); };
-  return <ModalShell title={value ? 'Editar movimiento' : 'Nuevo movimiento'} description="Anota el contexto; te ayudará a entender tus hábitos." onClose={onClose}><form onSubmit={submit} className="mt-7 space-y-4"><div className="grid grid-cols-2 gap-2 rounded-xl bg-[#eee7d9] p-1"><button type="button" onClick={() => setType('expense')} data-testid="button-type-expense" className={`rounded-lg py-2.5 text-sm font-bold ${type === 'expense' ? 'bg-[#f7d8ce] text-[#a75041]' : 'text-[#7b8279]'}`}>Gasto</button><button type="button" onClick={() => setType('income')} data-testid="button-type-income" className={`rounded-lg py-2.5 text-sm font-bold ${type === 'income' ? 'bg-[#d5e5d6] text-[#39715f]' : 'text-[#7b8279]'}`}>Ingreso</button></div><Field label="Descripción"><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ej. Compra semanal" data-testid="input-movement-description" className={inputClass} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Categoría"><select value={category} onChange={(event) => setCategory(event.target.value)} data-testid="select-movement-category" className={inputClass}>{categories.map((item) => <option key={item}>{item}</option>)}</select></Field><Field label="Importe"><div className="relative"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="0,00" data-testid="input-movement-amount" className={`${inputClass} pr-10`} /><span className="absolute right-3 top-3 text-sm text-[#8a9188]">€</span></div></Field></div><Field label="Fecha"><input type="date" value={date} onChange={(event) => setDate(event.target.value)} data-testid="input-movement-date" className={inputClass} /></Field>{error && <p className="rounded-xl bg-[#f7d8ce] px-3 py-2.5 text-xs font-semibold text-[#a75041]" data-testid="status-form-error">{error}</p>}<button type="submit" data-testid="button-save-movement" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0b6e69] py-3.5 text-sm font-bold text-[#f8f1e5]"><Check size={17} /> Guardar movimiento</button></form></ModalShell>;
+  const currencySymbol = currencyOptions.find((item) => item.code === currencyCode)?.symbol || currencyCode;
+  return <ModalShell title={value ? 'Editar movimiento' : 'Nuevo movimiento'} description="Anota el contexto; te ayudará a entender tus hábitos." onClose={onClose}><form onSubmit={submit} className="mt-7 space-y-4"><div className="grid grid-cols-2 gap-2 rounded-xl bg-[#eee7d9] p-1"><button type="button" onClick={() => setType('expense')} data-testid="button-type-expense" className={`rounded-lg py-2.5 text-sm font-bold ${type === 'expense' ? 'bg-[#f7d8ce] text-[#a75041]' : 'text-[#7b8279]'}`}>Gasto</button><button type="button" onClick={() => setType('income')} data-testid="button-type-income" className={`rounded-lg py-2.5 text-sm font-bold ${type === 'income' ? 'bg-[#d5e5d6] text-[#39715f]' : 'text-[#7b8279]'}`}>Ingreso</button></div><Field label="Descripción"><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ej. Compra semanal" data-testid="input-movement-description" className={inputClass} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Categoría"><select value={category} onChange={(event) => setCategory(event.target.value)} data-testid="select-movement-category" className={inputClass}>{categories.map((item) => <option key={item}>{item}</option>)}</select></Field><Field label={`Importe en ${currencyCode}`}><div className="relative"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder={currencyCode === 'COP' ? '0' : '0,00'} data-testid="input-movement-amount" className={`${inputClass} pr-10`} /><span className="absolute right-3 top-3 text-sm text-[#8a9188]">{currencySymbol}</span></div></Field></div><Field label="Fecha"><input type="date" value={date} onChange={(event) => setDate(event.target.value)} data-testid="input-movement-date" className={inputClass} /></Field>{error && <p className="rounded-xl bg-[#f7d8ce] px-3 py-2.5 text-xs font-semibold text-[#a75041]" data-testid="status-form-error">{error}</p>}<button type="submit" data-testid="button-save-movement" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0b6e69] py-3.5 text-sm font-bold text-[#f8f1e5]"><Check size={17} /> Guardar movimiento</button></form></ModalShell>;
 }
 
-function BudgetModal({ value, existing, onClose, onSave }: { value: Budget | null; existing: Budget[]; onClose: () => void; onSave: (budget: Budget) => void }) {
+function BudgetModal({ value, currencyCode, existing, onClose, onSave }: { value: Budget | null; currencyCode: CurrencyCode; existing: Budget[]; onClose: () => void; onSave: (budget: Budget) => void }) {
   const [category, setCategory] = useState(value?.category || categories.find((item) => !existing.some((budget) => budget.category === item)) || categories[0]);
   const [amount, setAmount] = useState(value?.amount ? String(value.amount) : '');
   const [error, setError] = useState('');
   const available = categories.filter((item) => item === value?.category || !existing.some((budget) => budget.category === item));
   const submit = (event: FormEvent) => { event.preventDefault(); const numeric = Number(amount.replace(',', '.')); if (!category || !Number.isFinite(numeric) || numeric <= 0) { setError('Elige una categoría e indica un importe mayor que 0.'); return; } onSave({ id: value?.id || `b-${Date.now()}`, category, amount: numeric }); };
-  return <ModalShell title={value ? 'Editar presupuesto' : 'Nueva categoría'} description="Define un límite que te ayude a elegir, no a castigarte." onClose={onClose}><form onSubmit={submit} className="mt-7 space-y-4"><Field label="Categoría"><select value={category} onChange={(event) => setCategory(event.target.value)} data-testid="select-budget-category" className={inputClass}>{available.map((item) => <option key={item}>{item}</option>)}</select></Field><Field label="Presupuesto mensual"><div className="relative"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="0,00" data-testid="input-budget-amount" className={`${inputClass} pr-10`} /><span className="absolute right-3 top-3 text-sm text-[#8a9188]">€</span></div></Field>{error && <p className="rounded-xl bg-[#f7d8ce] px-3 py-2.5 text-xs font-semibold text-[#a75041]" data-testid="status-budget-error">{error}</p>}<button type="submit" data-testid="button-save-budget" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0b6e69] py-3.5 text-sm font-bold text-[#f8f1e5]"><Check size={17} /> Guardar presupuesto</button></form></ModalShell>;
+  const currencySymbol = currencyOptions.find((item) => item.code === currencyCode)?.symbol || currencyCode;
+  return <ModalShell title={value ? 'Editar presupuesto' : 'Nueva categoría'} description="Define un límite que te ayude a elegir, no a castigarte." onClose={onClose}><form onSubmit={submit} className="mt-7 space-y-4"><Field label="Categoría"><select value={category} onChange={(event) => setCategory(event.target.value)} data-testid="select-budget-category" className={inputClass}>{available.map((item) => <option key={item}>{item}</option>)}</select></Field><Field label={`Presupuesto mensual en ${currencyCode}`}><div className="relative"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder={currencyCode === 'COP' ? '0' : '0,00'} data-testid="input-budget-amount" className={`${inputClass} pr-10`} /><span className="absolute right-3 top-3 text-sm text-[#8a9188]">{currencySymbol}</span></div></Field>{error && <p className="rounded-xl bg-[#f7d8ce] px-3 py-2.5 text-xs font-semibold text-[#a75041]" data-testid="status-budget-error">{error}</p>}<button type="submit" data-testid="button-save-budget" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0b6e69] py-3.5 text-sm font-bold text-[#f8f1e5]"><Check size={17} /> Guardar presupuesto</button></form></ModalShell>;
 }
 
 function NotFound() {
